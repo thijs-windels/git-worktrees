@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Git Worktrees</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='4' cy='3' r='2' fill='%2358a6ff'/><circle cx='4' cy='13' r='2' fill='%237ee787'/><circle cx='12' cy='5' r='2' fill='%23d2a8ff'/><line x1='4' y1='5' x2='4' y2='11' stroke='%238b949e' stroke-width='1.5'/><path d='M4 6 Q4 8 12 7' stroke='%238b949e' stroke-width='1.5' fill='none'/></svg>">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #21262d;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #e6edf3;
+  }
+
+  h1 span {
+    color: #58a6ff;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .summary {
+    font-size: 0.85rem;
+    color: #8b949e;
+  }
+
+  .reload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1rem;
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .reload-btn:hover {
+    background: #30363d;
+    border-color: #8b949e;
+  }
+
+  .reload-btn:active {
+    background: #282e33;
+  }
+
+  .reload-btn.loading svg {
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .repo-card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .repo-card:hover {
+    border-color: #30363d;
+  }
+
+  .repo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1.2rem;
+    background: #1c2129;
+    border-bottom: 1px solid #21262d;
+  }
+
+  .repo-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #58a6ff;
+  }
+
+  .worktree-count {
+    font-size: 0.75rem;
+    color: #8b949e;
+    background: #21262d;
+    padding: 0.2rem 0.6rem;
+    border-radius: 10px;
+  }
+
+  .worktree-list {
+    padding: 0.4rem 0;
+  }
+
+  .worktree-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.55rem 1.2rem;
+    font-size: 0.85rem;
+    font-family: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    transition: background 0.1s;
+  }
+
+  .worktree-row:hover {
+    background: #1c2129;
+  }
+
+  .branch-name {
+    color: #7ee787;
+    white-space: nowrap;
+  }
+
+  .worktree-row:first-child .branch-name {
+    color: #d2a8ff;
+  }
+
+  .worktree-path {
+    color: #8b949e;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+
+  .badge-prunable {
+    color: #d29922;
+    background: rgba(210, 153, 34, 0.15);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .badge-prunable:hover {
+    color: #f85149;
+    background: rgba(248, 81, 73, 0.15);
+    border-color: rgba(248, 81, 73, 0.4);
+  }
+
+  .badge-prunable:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  .badge-removing {
+    color: #8b949e;
+    background: rgba(139, 148, 158, 0.1);
+    border-color: rgba(139, 148, 158, 0.3);
+    cursor: default;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #8b949e;
+  }
+
+  .empty-state svg {
+    margin-bottom: 1rem;
+    opacity: 0.4;
+  }
+
+  .empty-state p {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .empty-state .sub {
+    font-size: 0.85rem;
+  }
+
+  .error-banner {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    color: #f85149;
+    padding: 0.8rem 1.2rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    display: none;
+  }
+
+  .timestamp {
+    font-size: 0.75rem;
+    color: #484f58;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>Git</span> Worktrees</h1>
+  <div class="header-right">
+    <span class="summary" id="summary"></span>
+    <span class="timestamp" id="timestamp"></span>
+    <button class="reload-btn" id="reloadBtn" onclick="loadData()">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 1 1 .908-.418A6 6 0 1 1 8 2v1z"/>
+        <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966a.25.25 0 0 1 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+      </svg>
+      Reload
+    </button>
+  </div>
+</header>
+
+<div class="error-banner" id="error"></div>
+<div id="content"></div>
+
+<script>
+  async function loadData() {
+    const btn = document.getElementById('reloadBtn');
+    const error = document.getElementById('error');
+    btn.classList.add('loading');
+    error.style.display = 'none';
+
+    try {
+      const response = await fetch('/api/worktrees');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      render(data);
+    } catch (err) {
+      error.textContent = `Failed to load worktree data: ${err.message}`;
+      error.style.display = 'block';
+    } finally {
+      btn.classList.remove('loading');
+    }
+  }
+
+  function render(data) {
+    const content = document.getElementById('content');
+    const summary = document.getElementById('summary');
+    const timestamp = document.getElementById('timestamp');
+
+    const now = new Date();
+    timestamp.textContent = `Updated ${now.toLocaleTimeString()}`;
+
+    if (data.repos.length === 0) {
+      summary.textContent = `${data.repos_scanned} repos scanned`;
+      content.innerHTML = `
+        <div class="empty-state">
+          <svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor">
+            <path fill-rule="evenodd" d="M2 2.5A2.5 2.5 0 014.5 0h8.75a.75.75 0 01.75.75v12.5a.75.75 0 01-.75.75h-2.5a.75.75 0 110-1.5h1.75v-2h-8a1 1 0 00-.714 1.7.75.75 0 01-1.072 1.05A2.495 2.495 0 012 11.5v-9z"/>
+          </svg>
+          <p>No extra worktrees found</p>
+          <p class="sub">All ${data.repos_scanned} repositories have only their main checkout</p>
+        </div>`;
+      return;
+    }
+
+    summary.textContent = `${data.repos.length} repo${data.repos.length !== 1 ? 's' : ''} with extra worktrees · ${data.repos_scanned} scanned`;
+
+    content.innerHTML = data.repos.map(repo => `
+      <div class="repo-card">
+        <div class="repo-header">
+          <span class="repo-name">${escapeHtml(repo.name)}</span>
+          <span class="worktree-count">${repo.worktrees.length} worktree${repo.worktrees.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="worktree-list">
+          ${repo.worktrees.map(wt => `
+            <div class="worktree-row">
+              <span class="branch-name">${escapeHtml(wt.branch || '(unknown)')}</span>
+              <span class="worktree-path" title="${escapeHtml(wt.path)}">${escapeHtml(wt.path)}</span>
+              ${wt.main ? '<span></span>' : `<button class="badge badge-prunable" onclick="removeWorktree(this, '${escapeAttr(repo.name)}', '${escapeAttr(wt.path)}')">remove</button>`}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function removeWorktree(button, repo, path) {
+    button.disabled = true;
+    button.classList.add('badge-removing');
+    button.textContent = 'removing...';
+
+    const error = document.getElementById('error');
+    error.style.display = 'none';
+
+    try {
+      const response = await fetch('/api/worktrees/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo, path }),
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.message);
+      loadData();
+    } catch (err) {
+      error.textContent = `Failed to remove worktree: ${err.message}`;
+      error.style.display = 'block';
+      button.disabled = false;
+      button.classList.remove('badge-removing');
+      button.textContent = 'remove';
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function escapeAttr(text) {
+    return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
+  loadData();
+</script>
+</body>
+</html>
